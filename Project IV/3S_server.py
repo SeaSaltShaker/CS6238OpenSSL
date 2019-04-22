@@ -2,6 +2,7 @@ from OpenSSL import SSL
 import threading
 import socket
 import sys
+import cert_auth
 
 nextDID = 1
 didPermissions = {}
