@@ -3,6 +3,9 @@ import threading
 import socket
 import sys
 
+nextDID = 1
+didPermissions = {}
+
 #print(SSL._CERTIFICATE_PATH_LOCATIONS)
 class Server:
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
