@@ -1,3 +1,4 @@
+
 import socket
 import sys
 import threading
@@ -5,7 +6,7 @@ import threading
 class Client:
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     def __init__(self, address):
-        self.sock.connect((address, 10000))
+        self.sock.connect((address, 9999))
 
         iThread = threading.Thread(target=self.sendMsg)
         iThread.daemon = True
