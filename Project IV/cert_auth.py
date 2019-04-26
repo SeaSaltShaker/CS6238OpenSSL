@@ -105,11 +105,20 @@ class CA:
                 data = c.recv(1024).decode("utf-8")
                 command = data.split("|")
                 print("Received " + data)
+                
                 #REQ [request] [requester's cname]
+                #If the requesting person loses their certificate, they should use the AUTH command to obtain copy from CA.
+                #The private key is permanently lost because it can't be recovered from the certificate.
+                
                 if command[0] == "REQ":
                     print("Request: " + command[1])
-                    cert = self.generateOutsideCert(command[1], serial, command[2])
-                    c.send(crypto.dump_certificate(crypto.FILETYPE_PEM, cert))
+
+                    #Check to see if the certificate exists
+                    if(os.path.isfile("CA_Documents\\%s.cert" % (command[2],))):
+                        c.send(bytes("ERROR %s already has a certificate." % (command[2],), "utf-8"))
+                    else:                           
+                        cert = self.generateOutsideCert(command[1], serial, command[2])
+                        c.send(crypto.dump_certificate(crypto.FILETYPE_PEM, cert))
                     self.dropClient(c)
                     return
                 #AUTH [connection's cname]
@@ -118,9 +127,9 @@ class CA:
                         with open("CA_Documents\\%s.cert" % (command[1],), 'r') as new_cert:
                             #Return the user's certificate
                             print("%s already has a certificate." % (command[1],))
-                            c.send(crypto.load_certificate(crypto.FILETYPE_PEM, new_cert).encode('utf-8'))
+                            c.send(bytes(new_cert.read(), 'utf-8'))
                     else:
-                        c.send("USER NOT FOUND")
+                        c.send("ERROR USER NOT FOUND")
             except SSL.ZeroReturnError:
                 self.dropClient(c)
             except SSL.Error as errors:
