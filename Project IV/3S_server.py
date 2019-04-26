@@ -90,7 +90,7 @@ class Server:
                 if(self.authenticate(clientName, data, signature) == False):
                     continue
                 command = data.split()
-                if command[0].lower() == "q" | command[0].lower() == "quit":
+                if (command[0].lower() == "q") | (command[0].lower() == "quit"):
                     #End session. Update documents before closing
                     #TODO: if the client used ckout, then probe for ckin before quitting
                     c.close()
@@ -101,10 +101,11 @@ class Server:
                 #ckin [did] [security flag] (C or I)
                 elif command[0].lower() == "ckin":
                     self.checkin(command[1], command[2], userName)
-                    
+                #grant [DID] [UNAME] [TIME]
                 elif command[0].lower() == "grant":
                     #call grant function
                     pass
+                #delete [DID]
                 elif command[0].lower() == "delete":
                     #call delete function
                     pass
@@ -112,6 +113,15 @@ class Server:
                 self.dropClient(c)
             except SSL.Error as errors:
                 self.dropClient(c, errors)
+
+    """Grants permissions by modifying the dictionary and changing permissions"""
+    #{DID: (owner, securityFlag, {TargetUser: ('[I][O]', expirationDate)})}
+    def grant(self, DID, UID, Time):
+        pass
+    
+    """Safe Delete of a file DID"""
+    def delete(self, DID):
+        pass #This command does nothing, but it's here so that it doesn't throw any errors
 
     def checkout(self, DID, userName):
         global didPermissions
@@ -218,16 +228,16 @@ class Server:
         print('Got certificate: ' + commonname)
         return ok
 
-    def receiveData(self, DID, confidential=False):
+    def sendData(self, DID, confidential=False):
         ctx = SSL.Context(SSL.SSLv23_METHOD)
         ctx.set_options(SSL.OP_NO_SSLv2)
         ctx.set_options(SSL.OP_NO_SSLv3)
         ctx.set_verify(
             SSL.VERIFY_PEER | SSL.VERIFY_FAIL_IF_NO_PEER_CERT, self.verify_cb
         )  # Demand a certificate
-        ctx.use_privatekey_file(os.path.join(dir, 'Server_Documents\\server.pkey'))
-        ctx.use_certificate_file(os.path.join(dir, 'Server_Documents\\server.cert'))
-        ctx.load_verify_locations(os.path.join(dir, 'Server_Documents\\CA.cert'))
+        ctx.use_privatekey_file('Server_Documents\\server.pkey')
+        ctx.use_certificate_file('Server_Documents\\server.cert')
+        ctx.load_verify_locations('Server_Documents\\CA.cert')
 
         # Set up secure channel
         data_connection = SSL.Connection(ctx, socket.socket(socket.AF_INET, socket.SOCK_STREAM))
@@ -240,16 +250,16 @@ class Server:
             f.close()
         data_connection.close()
 
-    def sendData(self, DID, confidential=False):
+    def receiveData(self, DID, confidential=False):
         ctx = SSL.Context(SSL.SSLv23_METHOD)
         ctx.set_options(SSL.OP_NO_SSLv2)
         ctx.set_options(SSL.OP_NO_SSLv3)
         ctx.set_verify(
             SSL.VERIFY_PEER | SSL.VERIFY_FAIL_IF_NO_PEER_CERT, self.verify_cb
         )  # Demand a certificate
-        ctx.use_privatekey_file(os.path.join(dir, 'Server_Documents\\server.pkey'))
-        ctx.use_certificate_file(os.path.join(dir, 'Server_Documents\\server.cert'))
-        ctx.load_verify_locations(os.path.join(dir, 'Server_Documents\\CA.cert'))
+        ctx.use_privatekey_file('Server_Documents\\server.pkey')
+        ctx.use_certificate_file('Server_Documents\\server.cert')
+        ctx.load_verify_locations('Server_Documents\\CA.cert')
 
         # Set up secure channel
         data_connection = SSL.Connection(ctx, socket.socket(socket.AF_INET, socket.SOCK_STREAM))
@@ -261,14 +271,6 @@ class Server:
                 f.write(data)
             f.close()
         data_connection.close()
-
-    """Grants permissions by modifying the dictionary and changing permissions"""
-    #{DID: (owner, securityFlag, {TargetUser: ('[I][O]', expirationDate)})}
-    def grant(self, DID, UID, Time):
-        pass
-
-    def delete(self):
-        pass
 
     def dropClient(self, c, errors=None):
         if errors:

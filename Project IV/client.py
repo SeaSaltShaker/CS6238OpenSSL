@@ -148,16 +148,16 @@ class Client:
         print('Got certificate: ' + commonname)
         return ok
 
-    def receiveData(self, DID):
+    def sendData(self, DID):
         ctx = SSL.Context(SSL.SSLv23_METHOD)
         ctx.set_options(SSL.OP_NO_SSLv2)
         ctx.set_options(SSL.OP_NO_SSLv3)
         ctx.set_verify(
             SSL.VERIFY_PEER | SSL.VERIFY_FAIL_IF_NO_PEER_CERT, self.verify_cb
         )  # Demand a certificate
-        ctx.use_privatekey_file(os.path.join(dir, 'Client_Documents\\%s.pkey' %(CName,)))
-        ctx.use_certificate_file(os.path.join(dir, 'Client_Documents\\%s.cert' %(CName,)))
-        ctx.load_verify_locations(os.path.join(dir, 'Client_Documents\\CA.cert'))
+        ctx.use_privatekey_file('Client_Documents\\%s.pkey' %(CName,))
+        ctx.use_certificate_file('Client_Documents\\%s.cert' %(CName,))
+        ctx.load_verify_locations('Client_Documents\\CA.cert')
 
         # Set up secure channel
         data_connection = SSL.Connection(ctx, socket.socket(socket.AF_INET, socket.SOCK_STREAM))
@@ -170,16 +170,16 @@ class Client:
             f.close()
         data_connection.close()
 
-    def sendData(self, DID):
+    def receiveData(self, DID):
         ctx = SSL.Context(SSL.SSLv23_METHOD)
         ctx.set_options(SSL.OP_NO_SSLv2)
         ctx.set_options(SSL.OP_NO_SSLv3)
         ctx.set_verify(
             SSL.VERIFY_PEER | SSL.VERIFY_FAIL_IF_NO_PEER_CERT, self.verify_cb
         )  # Demand a certificate
-        ctx.use_privatekey_file(os.path.join(dir, 'Client_Documents\\%s.pkey' %(CName,)))
-        ctx.use_certificate_file(os.path.join(dir, 'Client_Documents\\%s.cert' %(CName,)))
-        ctx.load_verify_locations(os.path.join(dir, 'Client_Documents\\CA.cert'))
+        ctx.use_privatekey_file('Client_Documents\\%s.pkey' %(CName,))
+        ctx.use_certificate_file('Client_Documents\\%s.cert' %(CName,))
+        ctx.load_verify_locations('Client_Documents\\CA.cert')
 
         # Set up secure channel
         data_connection = SSL.Connection(ctx, socket.socket(socket.AF_INET, socket.SOCK_STREAM))
