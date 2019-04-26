@@ -95,7 +95,7 @@ class Server:
                     #TODO: if the client used ckout, then probe for ckin before quitting
                     c.close()
                     return
-                #Usage ckout [DID]
+                #ckout [DID]
                 elif command[0].lower() == "ckout":
                     self.checkout(command[1], userName)
                 #ckin [did] [security flag] (C or I)
@@ -103,11 +103,11 @@ class Server:
                     self.checkin(command[1], command[2], userName)
                 #grant [DID] [UNAME] [TIME]
                 elif command[0].lower() == "grant":
-                    #call grant function
+                    self.grant(command[1], command[2], command[3])
                     pass
                 #delete [DID]
                 elif command[0].lower() == "delete":
-                    #call delete function
+                    self.delete(command[1])
                     pass
             except SSL.ZeroReturnError:
                 self.dropClient(c)
