@@ -3,14 +3,16 @@ from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives.asymmetric import padding
+from Crypto.Cipher import AES
+from Crypto import Random
 import cryptography
 import threading
 import socket
 import sys
 import os
+import struct
 import base64
-from datetime import datetime  
-from datetime import timedelta  
+import datetime 
 
 #{DID: (owner, securityFlag, {TargetUser: ('[I][O]', expirationDate}, [optional AES key])}
 #TODO: Change this to a file, so we won't lose everything when the server is restarted
@@ -97,14 +99,13 @@ class Server:
                     return
                 #ckout [DID]
                 elif command[0].lower() == "ckout":
-                    self.checkout(command[1], userName)
-                #ckin [did] [security flag] (C or I)
+                    self.checkout(command[1], userName, c)
+                #ckin [did] [security flag] (C or I) [number_of_expected_bytes]
                 elif command[0].lower() == "ckin":
-                    self.checkin(command[1], command[2], userName)
-                #grant [DID] [UNAME] [TIME]
+                    self.checkin(command[1], command[2], command[3], userName, c)
+                #grant [DID] [UNAME] [permissions] [TIME]
                 elif command[0].lower() == "grant":
-                    self.grant(command[1], command[2], command[3])
-                    pass
+                    self.grant(command[1], command[2], command[3], command[4], userName)
                 #delete [DID]
                 elif command[0].lower() == "delete":
                     self.delete(command[1])
@@ -116,14 +117,20 @@ class Server:
 
     """Grants permissions by modifying the dictionary and changing permissions"""
     #{DID: (owner, securityFlag, {TargetUser: ('[I][O]', expirationDate)})}
-    def grant(self, DID, UID, Time):
-        pass
+    def grant(self, DID, UID, securityFlag, Time, userName):
+        if DID in didPermissions.keys():
+            if didPermissions[DID][0] == userName:
+                didPermissions[DID][2][UID] = (securityFlag, datetime.datetime.now() + datetime.timedelta(minutes=int(Time)))
+                self.updateDID()
+            else:
+                print("ERROR ACCESS DENIED")
+        
     
     """Safe Delete of a file DID"""
     def delete(self, DID):
         pass #This command does nothing, but it's here so that it doesn't throw any errors
 
-    def checkout(self, DID, userName):
+    def checkout(self, DID, userName, c):
         global didPermissions
 
         #{DID: (owner, securityFlag, {TargetUser: ('[I][O]', expirationDate)})}
@@ -137,7 +144,7 @@ class Server:
             elif(userName in didPermissions[DID][2].keys()):
                 pass
                 #Then check to see if the user has checkin permissions
-                if("O" in didPermissions[DID][2][userName][0] & datetime.now > didPermissions[DID][2][userName][1]):
+                if("O" in didPermissions[DID][2][userName][0] & datetime.datetime.now() > didPermissions[DID][2][userName][1]):
                     pass
                 #Either this user does not have checkout access or their time has expired
                 else:
@@ -157,13 +164,13 @@ class Server:
 
         #TODO: transfer the data from the server to the client
         if didPermissions[DID][1] == "C":
-            self.sendData(DID, True)
+            self.sendData(DID, c, True)
         else:
-            self.sendData(DID)
+            self.sendData(DID, c)
 
-    def checkin(self, DID, securityFlag, userName):
+    def checkin(self, DID, securityFlag, num_bytes, userName, c):
         global didPermissions
-
+        print("Checking in document " + DID)
         #{DID: (owner, securityFlag, {TargetUser: ('[I][O]', expirationDate)})}
         owner = None
         newDocument = False
@@ -176,7 +183,7 @@ class Server:
             elif(userName in didPermissions[DID][2].keys()):
                 owner = didPermissions[DID][0]
                 #Then check to see if the user has checkin permissions
-                if("I" in didPermissions[DID][2][userName][0] & datetime.now > didPermissions[DID][2][userName][1]):
+                if(("I" in didPermissions[DID][2][userName][0]) & (datetime.datetime.now() < didPermissions[DID][2][userName][1])):
                     pass
                 else:
                     return ("ERROR ACCESS DENIED")
@@ -195,32 +202,52 @@ class Server:
         #We will create a new document from scratch
         else:
             newDocument = True
+            owner = userName
 
+        key = None
         #TODO: transfer the data from the client to the server
         if(securityFlag.lower() == "c"):
-            self.receiveData(DID, True)
+            key = self.receiveData(DID, num_bytes, c, True)
         else:
-            self.receiveData(DID)
+            key = self.receiveData(DID, num_bytes, c)
 
         #Finally, replace the key if we are creating a new file.
-        if(newDocument):
-            didPermissions[DID] = (owner, securityFlag, {})
+        if(newDocument == True):
+            if key != None:
+                didPermissions[DID] = (owner, securityFlag.upper(), {}) + key
+            else:
+                didPermissions[DID] = (owner, securityFlag.upper(), {})
             #Update the DID file
+            print("New owner: " + owner)
             self.updateDID()
 
-    def generateAESKey(self, DID):
-        global didPermissions
+    def generateAESKey(self):
         cryptoPk = self.pk.to_cryptography_key().public_key()
+        #Generates a 32 byte random key
+        AESKey = Random.new().read(32)
+        print("Generate key")
+        print(AESKey.decode(errors='ignore'))
+        iv = ''.join(chr(0) for i in range(16))
+        mode = AES.MODE_CBC
+        encryptor = AES.new(AESKey, mode, iv.encode('utf-8'))
+        """
         backend = default_backend()
         key = os.urandom(32)
         iv = os.urandom(16)
-        cipher = Cipher(algorithms.AES(key), modes.CBC(iv), backend=backend)
-        encryptor = cipher.encryptor()
-        #Adding the key to the end of the document
-        didPermissions[DID]+=(cryptoPk.encrypt(key,padding.OAEP(
+        cipher = Cipher(algorithms.AES(key), modes.CBC(0), backend=backend)
+        encryptor = cipher.encryptor()"""
+        return encryptor, (cryptoPk.encrypt(AESKey,padding.OAEP(
          mgf=padding.MGF1(algorithm=hashes.SHA256()),
          algorithm=hashes.SHA256(),label=None)),)
-        return encryptor
+
+    def returnAESKey(self, DID):
+        global didPermissions
+        cryptoPk = self.pk.to_cryptography_key()
+        encryptedKey = didPermissions[DID][3]
+        AESKey = cryptoPk.decrypt(encryptedKey, padding.OAEP(
+         mgf=padding.MGF1(algorithm=hashes.SHA256()),
+         algorithm=hashes.SHA256(),label=None))
+        return AESKey
 
     def verify_cb(self, conn, cert, errnum, depth, ok):
         certsubject = crypto.X509Name(cert.get_subject())
@@ -228,49 +255,93 @@ class Server:
         print('Got certificate: ' + commonname)
         return ok
 
-    def sendData(self, DID, confidential=False):
-        ctx = SSL.Context(SSL.SSLv23_METHOD)
-        ctx.set_options(SSL.OP_NO_SSLv2)
-        ctx.set_options(SSL.OP_NO_SSLv3)
-        ctx.set_verify(
-            SSL.VERIFY_PEER | SSL.VERIFY_FAIL_IF_NO_PEER_CERT, self.verify_cb
-        )  # Demand a certificate
-        ctx.use_privatekey_file('Server_Documents\\server.pkey')
-        ctx.use_certificate_file('Server_Documents\\server.cert')
-        ctx.load_verify_locations('Server_Documents\\CA.cert')
+    def sendData(self, DID, c, confidential=False):
+        acceptingSize = 1024
+        #https://eli.thegreenplace.net/2010/06/25/aes-encryption-of-files-in-python-with-pycrypto
+        if(confidential == True):
+            key = self.returnAESKey(DID)
+            print("Sending Key")
+            print(key.decode(errors='ignore'))
+            with open('Server_Documents\\%s' %(DID,), 'rb') as f:
+                origsize = struct.unpack('<Q', f.read(struct.calcsize('Q')))[0]
+                origsize = int(origsize)
+                #iv = f.read(16)
+                iv = ''.join(chr(0) for i in range(16))
+                decryptor = AES.new(key, AES.MODE_CBC, iv.encode('utf-8'))
+                c.send(bytes(str(origsize), 'utf-8'))
+                stri = c.recv(1024).decode('utf-8')
+                print(stri)
+                if(stri == "START"):
+                    pass #flushes the thing...
+                else:
+                    print("FAILURE")
+                sendSize = 0
+                while sendSize < origsize:
+                    chunk = f.read(acceptingSize)
+                    if len(chunk) == 0:
+                        break
+                    data = decryptor.decrypt(chunk)
+                    print(data.decode(errors='replace'))
+                    c.send(data)
+                    sendSize += acceptingSize
+        else:
+            with open('Server_Documents\\%s' %(DID,), 'r') as f:
+                b = os.path.getsize("Server_Documents\\%s" %(DID,))
+                c.send(bytes(b, 'utf-8'))
+                c.recv(1024) #flushes the thing...
+                while True:
+                    data = f.read(acceptingSize)
+                    if not data: 
+                        break
+                    c.send(data.encode('utf-8'))
+                f.close()
+            c.send("200".encode('utf-8'))
 
-        # Set up secure channel
-        data_connection = SSL.Connection(ctx, socket.socket(socket.AF_INET, socket.SOCK_STREAM))
-        data_connection.bind(('', 10004))
-        with open('Server_Documents\\%s' %(DID,), 'r') as f:
-            while True:
-                data = f.read(1024)
-                if not data: break
-                data_connection.send(data.encode('utf-8'))
-            f.close()
-        data_connection.close()
+    def receiveData(self, DID, num_bytes, c, confidential=False):
+        acceptedBytes = 0
+        acceptingBytes = 1024
+        num_bytes = int(num_bytes)
 
-    def receiveData(self, DID, confidential=False):
-        ctx = SSL.Context(SSL.SSLv23_METHOD)
-        ctx.set_options(SSL.OP_NO_SSLv2)
-        ctx.set_options(SSL.OP_NO_SSLv3)
-        ctx.set_verify(
-            SSL.VERIFY_PEER | SSL.VERIFY_FAIL_IF_NO_PEER_CERT, self.verify_cb
-        )  # Demand a certificate
-        ctx.use_privatekey_file('Server_Documents\\server.pkey')
-        ctx.use_certificate_file('Server_Documents\\server.cert')
-        ctx.load_verify_locations('Server_Documents\\CA.cert')
+        #Then we need to pad using AES
+        #https://eli.thegreenplace.net/2010/06/25/aes-encryption-of-files-in-python-with-pycrypto
+        if(confidential == True):
+            encryptor, aesKey = self.generateAESKey()
+            iv = ''.join(chr(0) for i in range(16))
+            with open('Server_Documents\\%s' %(DID,), 'wb') as f:
+                f.write(struct.pack('<Q', num_bytes))
+                #f.write(iv.encode('utf-8'))
 
-        # Set up secure channel
-        data_connection = SSL.Connection(ctx, socket.socket(socket.AF_INET, socket.SOCK_STREAM))
-        data_connection.bind(('', 10004))
-        with open('Server_Documents\\%s' %(DID,), 'w') as f:
-            while True:
-                data = data_connection.recv(1024).decode("utf-8")
-                if not data: break
-                f.write(data)
-            f.close()
-        data_connection.close()
+                while acceptedBytes < num_bytes:
+                    print(acceptedBytes)
+                    print (num_bytes)
+                    if((num_bytes-acceptedBytes) < acceptingBytes):
+                        acceptingBytes = num_bytes - acceptedBytes
+                    chunk = c.recv(acceptingBytes).decode('utf-8')
+                    if len(chunk) == 0:
+                        break
+                    #Padding the last block
+                    elif len(chunk) % 16 != 0:
+                        chunk += ' ' * (16 - len(chunk) % 16)
+                    f.write(encryptor.encrypt(chunk.encode('utf-8')))
+                    acceptedBytes += acceptingBytes
+                f.close()
+            print("Done saving file!")
+            return aesKey
+            
+        
+        else:
+            with open('Server_Documents\\%s' %(DID,), 'w') as f:
+                while acceptedBytes < num_bytes:
+                    print(acceptedBytes)
+                    print (num_bytes)
+                    if((num_bytes-acceptedBytes) < acceptingBytes):
+                        acceptingBytes = num_bytes - acceptedBytes
+                    data = c.recv(acceptingBytes).decode("utf-8")
+                    print(data)
+                    f.write(data)
+                    acceptedBytes += acceptingBytes
+                f.close()
+            return None
 
     def dropClient(self, c, errors=None):
         if errors:
