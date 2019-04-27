@@ -104,6 +104,8 @@ class CA:
             try:
                 data = c.recv(1024).decode("utf-8")
                 command = data.split("|")
+                if not data:
+                    continue
                 print("Received " + data)
                 
                 #REQ [request] [requester's cname]

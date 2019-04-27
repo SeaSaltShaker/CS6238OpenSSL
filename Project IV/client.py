@@ -17,8 +17,11 @@ class Client:
     username = None
     pk = None
     user_pk = None
+    svr_address = None
+    update_flag = False
 
     def __init__(self, address):
+        self.svr_address = address
         self.requestCert(CName)
         print("Certificate acquired for this client!")
         self.sock.connect((address, 10003))
@@ -47,11 +50,11 @@ class Client:
         iThread.start()
 
         while True:
-            data = self.sock.recv(1024)
-            if not data:
+            #data = self.sock.recv(1024)
+            if True:
                 pass
-            else:
-                print(data.decode('utf-8'))
+           # else:
+                #print(data.decode('utf-8'))
 
     def userLogin(self):
         #TODO start the session by sending the server the username
@@ -149,59 +152,53 @@ class Client:
         return ok
 
     def sendData(self, DID):
-        ctx = SSL.Context(SSL.SSLv23_METHOD)
-        ctx.set_options(SSL.OP_NO_SSLv2)
-        ctx.set_options(SSL.OP_NO_SSLv3)
-        ctx.set_verify(
-            SSL.VERIFY_PEER | SSL.VERIFY_FAIL_IF_NO_PEER_CERT, self.verify_cb
-        )  # Demand a certificate
-        ctx.use_privatekey_file('Client_Documents\\%s.pkey' %(CName,))
-        ctx.use_certificate_file('Client_Documents\\%s.cert' %(CName,))
-        ctx.load_verify_locations('Client_Documents\\CA.cert')
-
-        # Set up secure channel
-        data_connection = SSL.Connection(ctx, socket.socket(socket.AF_INET, socket.SOCK_STREAM))
-        data_connection.bind(('', 10004))
         with open('Client_Documents\\%s' %(DID,), 'r') as f:
             while True:
                 data = f.read(1024)
                 if not data: break
-                data_connection.send(data.encode('utf-8'))
+                self.sock.send(data.encode('utf-8'))
             f.close()
-        data_connection.close()
 
     def receiveData(self, DID):
-        ctx = SSL.Context(SSL.SSLv23_METHOD)
-        ctx.set_options(SSL.OP_NO_SSLv2)
-        ctx.set_options(SSL.OP_NO_SSLv3)
-        ctx.set_verify(
-            SSL.VERIFY_PEER | SSL.VERIFY_FAIL_IF_NO_PEER_CERT, self.verify_cb
-        )  # Demand a certificate
-        ctx.use_privatekey_file('Client_Documents\\%s.pkey' %(CName,))
-        ctx.use_certificate_file('Client_Documents\\%s.cert' %(CName,))
-        ctx.load_verify_locations('Client_Documents\\CA.cert')
-
-        # Set up secure channel
-        data_connection = SSL.Connection(ctx, socket.socket(socket.AF_INET, socket.SOCK_STREAM))
-        data_connection.bind(('', 10004))
-        with open('Client_Documents\\%s' %(DID,), 'w') as f:
-            while True:
-                data = data_connection.recv(1024).decode("utf-8")
-                if not data: break
+        num_bytes = self.sock.recv(1024).decode('utf-8')
+        acceptedBytes = 0
+        acceptingBytes = 1024
+        num_bytes = int(num_bytes)
+        self.sock.send("START".encode('utf-8')) #flushes the connection        
+        #self.sock.send("START".encode('utf-8')) #flushes the connection     
+        with open('Client_Documents\\%s' %(DID,), 'wb') as f:
+            while acceptedBytes < num_bytes:
+                print("Accepted" + str(acceptedBytes))
+                print ("Total" + str(num_bytes))
+                #if((num_bytes-acceptedBytes) < acceptingBytes):
+                #    acceptingBytes = num_bytes - acceptedBytes
+                data = self.sock.recv(acceptingBytes).decode("utf-8").strip()
+                print("Data" + data)
                 f.write(data)
+                acceptedBytes += acceptingBytes
             f.close()
-        data_connection.close()
+        print("Finished receiving bytes")
+        
 
     def sendMsg(self):
         while True:
             msg = input("Command: ")
             if(msg.split()[0].lower() == "help"):
-                print("Usage:\nq, quit to log out\nckout [DID] to request a document\nckin [DID] [FLAG] to submit a document\ngrant [DID] [UNAME] [TIME] to change permissions\ndelete [DID] to delete a document")
+                print("Usage:\nq, quit to log out\nckout [DID] to request a document\nckin [DID] [FLAG] to submit a document\ngrant [DID] [UNAME] [I][O] [TIME] to change permissions\ndelete [DID] to delete a document")
             elif(msg.split()[0].lower() == "ckin"):
                 DID = msg.split()[1]
+                print(DID)
+                b = os.path.getsize("Client_Documents\\%s" %(DID,))
+                msg += " " + str(b)
                 self.sock.send(bytes(msg, 'utf-8'))
                 self.sock.send(crypto.sign(self.pk, bytes(msg, 'utf-8'), "sha256"))
-                self.sendData(DID)                
+                self.sendData(DID)
+            elif(msg.split()[0].lower() == "ckout"):
+                DID = msg.split()[1]
+                print(DID)
+                self.sock.send(bytes(msg, 'utf-8'))
+                self.sock.send(crypto.sign(self.pk, bytes(msg, 'utf-8'), "sha256"))
+                self.receiveData(DID)                            
             else:
                 #Sign every message
                 self.sock.send(bytes(msg, 'utf-8'))
