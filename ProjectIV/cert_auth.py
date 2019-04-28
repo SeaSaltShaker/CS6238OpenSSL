@@ -22,7 +22,7 @@ class CA:
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     connections = []
 
-    def __init__(self):
+    def __init__(self, address = '192.168.56.1', port = 10000):
         #This first checks to see if the CA already has a certificate
         if(os.path.isfile('CA_Documents\\CA.pkey') & os.path.isfile('CA_Documents\\CA.cert')):
             with open("CA_Documents\\CA.pkey", 'r') as capk:
@@ -60,7 +60,7 @@ class CA:
 
         self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         #Change for demo
-        self.sock.bind(('192.168.56.1', 10000))
+        self.sock.bind((address, port))
         self.sock.listen(1)
 
     def __createCertificate(self, req, issuerCertKey, serial, validityPeriod,

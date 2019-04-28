@@ -13,6 +13,7 @@ import os
 import struct
 import base64
 import datetime 
+import json
 
 #{DID: (owner, securityFlag, {TargetUser: ('[I][O]', expirationDate}, [optional AES key])}
 #TODO: Change this to a file, so we won't lose everything when the server is restarted
@@ -25,26 +26,34 @@ nextDID = 1
 class Server:
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     connections = []
+    CA_addr = None
+    CA_port = None
     pk = None
-    def __init__(self):
+    def __init__(self, CA_addr='192.168.56.1', CA_port=10000, server_addr = '0.0.0.0', server_port=1003):
+        self.CA_addr = CA_addr
+        self.CA_port = CA_port
         self.requestCert()
         #Loads the current Dictionary permissions
         self.loadDID()
         print("Certificate acquired!")
         self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)  #this is the socket for the client
-        self.sock.bind(('0.0.0.0', 10003))
+        self.sock.bind((server_addr, server_port))
         self.sock.listen(1)
 
     def loadDID(self):
         global didPermissions
-        with open("Server_Documents\\curDID.txt", "r") as f:
+        with open("Server_Documents\\curDID.txt", 'r') as f:
             didPermissions = eval(f.read())
+            #didPermissions = json.load(f)
+            #didPermissions = json.loads(f.read())
             f.close()
 
     def updateDID(self):
         global didPermissions
         with open("Server_Documents\\curDID.txt", "w") as f:
             f.write(str(didPermissions))
+            #f.write(json.dumps(didPermissions))
+            #json.dump(didPermissions, f)
             f.close()
         return nextDID
 
@@ -108,8 +117,7 @@ class Server:
                     self.grant(command[1], command[2], command[3], command[4], userName)
                 #delete [DID]
                 elif command[0].lower() == "delete":
-                    self.delete(command[1])
-                    pass
+                    self.delete(command[1], userName)
             except SSL.ZeroReturnError:
                 self.dropClient(c)
             except SSL.Error as errors:
@@ -124,11 +132,24 @@ class Server:
                 self.updateDID()
             else:
                 print("ERROR ACCESS DENIED")
+        else:
+            print("ERROR ACCESS DENIED")
         
     
     """Safe Delete of a file DID"""
-    def delete(self, DID):
-        pass #This command does nothing, but it's here so that it doesn't throw any errors
+    def delete(self, DID, userName):
+        if DID in didPermissions.keys():
+            if didPermissions[DID][0] == userName:
+                #We delete the meta data
+                del didPermissions[DID]
+                #Delete the file itself
+                os.remove("Server_Documents\\%s" %(DID,))
+                self.updateDID()
+                print("Successfully deleted " + DID)
+            else:
+                print("ERROR ACCESS DENIED")
+        else:
+            print("ERROR ACCESS DENIED")
 
     def checkout(self, DID, userName, c):
         global didPermissions
@@ -144,7 +165,7 @@ class Server:
             elif(userName in didPermissions[DID][2].keys()):
                 pass
                 #Then check to see if the user has checkin permissions
-                if("O" in didPermissions[DID][2][userName][0] & datetime.datetime.now() > didPermissions[DID][2][userName][1]):
+                if(("O" in didPermissions[DID][2][userName][0]) & (datetime.datetime.now() > didPermissions[DID][2][userName][1])):
                     pass
                 #Either this user does not have checkout access or their time has expired
                 else:
@@ -236,18 +257,20 @@ class Server:
         iv = os.urandom(16)
         cipher = Cipher(algorithms.AES(key), modes.CBC(0), backend=backend)
         encryptor = cipher.encryptor()"""
-        return encryptor, (cryptoPk.encrypt(AESKey,padding.OAEP(
+        """return encryptor, (cryptoPk.encrypt(AESKey,padding.OAEP(
          mgf=padding.MGF1(algorithm=hashes.SHA256()),
-         algorithm=hashes.SHA256(),label=None)),)
+         algorithm=hashes.SHA256(),label=None)),)"""
+        return encryptor, (AESKey,)
 
     def returnAESKey(self, DID):
         global didPermissions
         cryptoPk = self.pk.to_cryptography_key()
         encryptedKey = didPermissions[DID][3]
-        AESKey = cryptoPk.decrypt(encryptedKey, padding.OAEP(
+        """AESKey = cryptoPk.decrypt(encryptedKey, padding.OAEP(
          mgf=padding.MGF1(algorithm=hashes.SHA256()),
          algorithm=hashes.SHA256(),label=None))
-        return AESKey
+        return AESKey"""
+        return encryptedKey
 
     def verify_cb(self, conn, cert, errnum, depth, ok):
         certsubject = crypto.X509Name(cert.get_subject())
@@ -306,7 +329,6 @@ class Server:
         #https://eli.thegreenplace.net/2010/06/25/aes-encryption-of-files-in-python-with-pycrypto
         if(confidential == True):
             encryptor, aesKey = self.generateAESKey()
-            iv = ''.join(chr(0) for i in range(16))
             with open('Server_Documents\\%s' %(DID,), 'wb') as f:
                 f.write(struct.pack('<Q', num_bytes))
                 #f.write(iv.encode('utf-8'))
@@ -394,7 +416,7 @@ class Server:
     def authenticate(self, authName, message, encryptedMessage):
         CAsock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         CAsock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        CAsock.connect(('192.168.56.1', 10000))
+        CAsock.connect((self.CA_addr, self.CA_port))
         print("Attempting to authenticate " + authName)
         CAsock.send(bytes("AUTH|" + authName, 'utf-8'))
         response = CAsock.recv(1024).decode('utf-8')

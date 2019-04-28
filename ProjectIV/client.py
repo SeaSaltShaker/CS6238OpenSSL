@@ -19,12 +19,16 @@ class Client:
     user_pk = None
     svr_address = None
     update_flag = False
+    CA_addr = None
+    CA_port = None
 
-    def __init__(self, address):
+    def __init__(self, address, port = 1003, CA_addr='192.168.56.1', CA_port=10000):
+        self.CA_addr = CA_addr
+        self.CA_port = CA_port
         self.svr_address = address
         self.requestCert(CName)
         print("Certificate acquired for this client!")
-        self.sock.connect((address, 10003))
+        self.sock.connect((address, port))
         #Authenticate the server
         serverName = self.sock.recv(1024).decode("utf-8")
         signature = self.sock.recv(1024)
@@ -74,7 +78,7 @@ class Client:
     def authenticate(self, authName, encryptedName):
         CAsock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         CAsock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        CAsock.connect(('192.168.56.1', 10000))
+        CAsock.connect((self.CA_addr, self.CA_port))
         print("Attempting to authenticate " + authName)
         CAsock.send(bytes("AUTH|" + authName, 'utf-8'))
         response = CAsock.recv(1024).decode('utf-8')
@@ -174,7 +178,7 @@ class Client:
                 #    acceptingBytes = num_bytes - acceptedBytes
                 data = self.sock.recv(acceptingBytes).decode("utf-8").strip()
                 print("Data" + data)
-                f.write(data)
+                f.write(data.encode('utf-8'))
                 acceptedBytes += acceptingBytes
             f.close()
         print("Finished receiving bytes")
@@ -198,7 +202,12 @@ class Client:
                 print(DID)
                 self.sock.send(bytes(msg, 'utf-8'))
                 self.sock.send(crypto.sign(self.pk, bytes(msg, 'utf-8'), "sha256"))
-                self.receiveData(DID)                            
+                self.receiveData(DID)  
+            elif (msg.split()[0].lower() == "q") | (msg.split()[0].lower() == "quit"):
+                self.sock.send(bytes(msg, 'utf-8'))
+                self.sock.send(crypto.sign(self.pk, bytes(msg, 'utf-8'), "sha256"))   
+                print("Goodbye")
+                self.sock.close()                    
             else:
                 #Sign every message
                 self.sock.send(bytes(msg, 'utf-8'))
